@@ -249,10 +249,154 @@ class StudentProfileView(APIView):
             'id': user.id,
             'name': user.username,
             'email': user.email,
+
+            # Personal Information
             'phone': student_profile.phone,
-            'age': student_profile.age,
+            'date_of_birth': student_profile.date_of_birth,
+            'age': self.calculate_age(student_profile.date_of_birth),
+            'address': student_profile.address,
+            'city': student_profile.city,
+
+            # Learning & Career
             'course': student_profile.course,
+            'career_goal': student_profile.career_goal,
+            'experience_level': student_profile.experience_level,
+            'skills': student_profile.skills,
+            'github': student_profile.github,
+            'linkedin': student_profile.linkedin,
+
+            # About Me
+            'bio': student_profile.bio,
+
+            # System-controlled
             'status': student_profile.status,
             'created_at': student_profile.created_at,
         })
 
+
+    def put(self, request, user_id):
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'User not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            student_profile = user.student_profile
+        except StudentProfile.DoesNotExist:
+            return Response(
+                {'error': 'Student profile not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Personal Information
+
+        if 'phone' in request.data:
+            student_profile.phone = request.data.get('phone', '')
+
+        if 'date_of_birth' in request.data:
+            date_of_birth = request.data.get('date_of_birth')
+
+            if date_of_birth in ['', None]:
+                student_profile.date_of_birth = None
+            else:
+                student_profile.date_of_birth = date_of_birth
+
+        if 'address' in request.data:
+            student_profile.address = request.data.get('address', '')
+
+        if 'city' in request.data:
+            student_profile.city = request.data.get('city', '')
+
+
+        # Learning & Career
+
+        if 'course' in request.data:
+            student_profile.course = request.data.get('course', '')
+
+        if 'career_goal' in request.data:
+            student_profile.career_goal = request.data.get('career_goal', '')
+
+        if 'experience_level' in request.data:
+            student_profile.experience_level = request.data.get(
+                'experience_level',
+                ''
+            )
+
+        if 'skills' in request.data:
+            skills = request.data.get('skills')
+
+            if isinstance(skills, list):
+                student_profile.skills = skills
+
+        if 'github' in request.data:
+            student_profile.github = request.data.get('github', '')
+
+        if 'linkedin' in request.data:
+            student_profile.linkedin = request.data.get('linkedin', '')
+
+
+        # About Me
+
+        if 'bio' in request.data:
+            student_profile.bio = request.data.get('bio', '')
+
+
+        # Save changes
+        student_profile.save()
+
+
+        return Response({
+            'id': user.id,
+            'name': user.username,
+            'email': user.email,
+
+            # Personal Information
+            'phone': student_profile.phone,
+            'date_of_birth': student_profile.date_of_birth,
+            'age': self.calculate_age(student_profile.date_of_birth),
+            'address': student_profile.address,
+            'city': student_profile.city,
+
+            # Learning & Career
+            'course': student_profile.course,
+            'career_goal': student_profile.career_goal,
+            'experience_level': student_profile.experience_level,
+            'skills': student_profile.skills,
+            'github': student_profile.github,
+            'linkedin': student_profile.linkedin,
+
+            # About Me
+            'bio': student_profile.bio,
+
+            # System-controlled
+            'status': student_profile.status,
+            'created_at': student_profile.created_at,
+        })
+
+
+    @staticmethod
+    def calculate_age(date_of_birth):
+
+        if not date_of_birth:
+            return None
+
+        from datetime import date
+
+        today = date.today()
+
+        age = today.year - date_of_birth.year
+
+        if (
+            today.month,
+            today.day
+        ) < (
+            date_of_birth.month,
+            date_of_birth.day
+        ):
+            age -= 1
+
+        return age
