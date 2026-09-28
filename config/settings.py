@@ -152,6 +152,7 @@ MAILERS = {
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "https://learning-hub-azure.vercel.app",
 ]
 
 REST_FRAMEWORK = {
