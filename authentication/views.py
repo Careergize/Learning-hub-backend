@@ -4,12 +4,13 @@ from django.contrib.auth.models import User
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import AllowAny
 
 from .models import StudentProfile
 
 
 class LoginView(APIView):
-
+    permission_classes = [AllowAny]
     def post(self, request):
         email = request.data.get('email')
         password = request.data.get('password')
@@ -20,9 +21,8 @@ class LoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
+        user = User.objects.filter(email=email).first()
+        if not user:
             return Response(
                 {'error': 'Invalid email or password.'},
                 status=status.HTTP_401_UNAUTHORIZED
@@ -70,6 +70,7 @@ class LoginView(APIView):
 
 
 class RegisterView(APIView):
+    permission_classes = [AllowAny]
 
     def post(self, request):
 
@@ -185,6 +186,8 @@ class StudentApprovalView(APIView):
             status=status.HTTP_400_BAD_REQUEST
         )
 class AdminLoginView(APIView):
+
+    permission_classes = [AllowAny]
 
     def post(self, request):
         username = request.data.get('username')
