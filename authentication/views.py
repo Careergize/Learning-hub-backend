@@ -231,12 +231,10 @@ class AdminLoginView(APIView):
         })
 
 
-
 class StudentProfileView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, user_id):
-
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
@@ -245,45 +243,33 @@ class StudentProfileView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        try:
-            student_profile = user.student_profile
-        except StudentProfile.DoesNotExist:
-            return Response(
-                {'error': 'Student profile not found.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        # Automatically get or create the profile
+        student_profile, _ = StudentProfile.objects.get_or_create(
+            user=user,
+            defaults={'status': 'approved'}
+        )
 
         return Response({
             'id': user.id,
             'name': user.username,
             'email': user.email,
-
-            # Personal Information
             'phone': student_profile.phone,
             'date_of_birth': student_profile.date_of_birth,
             'age': self.calculate_age(student_profile.date_of_birth),
             'address': student_profile.address,
             'city': student_profile.city,
-
-            # Learning & Career
             'course': student_profile.course,
             'career_goal': student_profile.career_goal,
             'experience_level': student_profile.experience_level,
             'skills': student_profile.skills,
             'github': student_profile.github,
             'linkedin': student_profile.linkedin,
-
-            # About Me
             'bio': student_profile.bio,
-
-            # System-controlled
             'status': student_profile.status,
             'created_at': student_profile.created_at,
         })
 
-
     def put(self, request, user_id):
-
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
@@ -292,13 +278,12 @@ class StudentProfileView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        try:
-            student_profile = user.student_profile
-        except StudentProfile.DoesNotExist:
-            return Response(
-                {'error': 'Student profile not found.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+        # Automatically get or create the profile
+        student_profile, _ = StudentProfile.objects.get_or_create(
+            user=user,
+            defaults={'status': 'approved'}
+        )
+
 
         # Personal Information
 
