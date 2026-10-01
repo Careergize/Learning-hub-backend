@@ -104,3 +104,90 @@ class Certificate(models.Model):
 		if is_new and not self.verification_url:
 			self.verification_url = f"/api/learning/certificates/verify/{self.certificate_id}/"
 			super().save(update_fields=["verification_url"])
+
+   
+class ScheduleSession(models.Model):
+    course = models.ForeignKey(
+        Course,
+        on_delete=models.CASCADE,
+        related_name="schedule_sessions"
+    )
+    topic = models.CharField(max_length=255)
+    date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+
+    instructor = models.ForeignKey(
+        "courses.Instructor",
+        on_delete=models.PROTECT,
+        related_name="schedule_sessions"
+    )
+
+    platform = models.CharField(max_length=100)
+    meet_url = models.URLField(blank=True)
+
+    class Meta:
+        ordering = ["date", "start_time"]
+
+    def __str__(self):
+        return f"{self.course.title} - {self.topic}"
+
+class Attendance(models.Model):
+
+    class Status(models.TextChoices):
+        PRESENT = "present", "Present"
+        LATE = "late", "Late"
+        ABSENT = "absent", "Absent"
+        UNMARKED = "unmarked", "Unmarked"
+
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="schedule_attendance"
+    )
+
+    session = models.ForeignKey(
+        ScheduleSession,
+        on_delete=models.CASCADE,
+        related_name="attendance_records"
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.UNMARKED
+    )
+
+    check_in_time = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+        unique_together = ("student", "session")
+
+    def __str__(self):
+        return f"{self.student.username} - {self.session} - {self.status}"
+
+
+class ChecklistItem(models.Model):
+    session = models.ForeignKey(
+        ScheduleSession,
+        on_delete=models.CASCADE,
+        related_name="checklist_items"
+    )
+
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="schedule_checklist_items"
+    )
+
+    text = models.CharField(max_length=255)
+    done = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return self.text

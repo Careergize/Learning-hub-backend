@@ -3,6 +3,7 @@ from django.shortcuts import render
 # Create your views here.
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -10,8 +11,21 @@ from rest_framework.views import APIView
 
 from courses.models import Lesson
 
-from .models import Certificate, Enrollment, LessonProgress
-from .serializers import CertificateSerializer, EnrolledCourseSerializer, EnrollmentCreateSerializer
+from .models import (
+    Certificate,
+    Enrollment,
+    LessonProgress,
+    ScheduleSession,
+    Attendance,
+    ChecklistItem,
+)
+from .serializers import (
+    CertificateSerializer,
+    EnrolledCourseSerializer,
+    EnrollmentCreateSerializer,
+    ScheduleSessionSerializer,
+    ChecklistItemSerializer,
+)
 
 
 class MyLearningViewSet(viewsets.ModelViewSet):
@@ -156,4 +170,185 @@ class CertificateVerifyView(APIView):
             "studentName": cert.enrollment.student.get_full_name() or cert.enrollment.student.username,
             "courseTitle": cert.enrollment.course.title,
             "issuedDate": cert.issued_date,
+        })
+
+class ScheduleViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Returns the schedule sessions for the Schedule page.
+    Attendance and checklist information are specific to the
+    currently authenticated student.
+    """
+
+    serializer_class = ScheduleSessionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        enrolled_course_ids = Enrollment.objects.filter(
+             student=self.request.user
+        ).values_list("course_id", flat=True)
+
+        return ScheduleSession.objects.select_related(
+        "course",
+        "instructor",
+    ).prefetch_related(
+        "checklist_items",
+        "attendance_records",
+    ).filter(
+        course_id__in=enrolled_course_ids
+    )
+
+
+class AttendanceCheckInView(APIView):
+    """
+    Marks the current student as present for a schedule session.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, session_id):
+        session = get_object_or_404(
+            ScheduleSession,
+            id=session_id
+        )
+
+        attendance, created = Attendance.objects.get_or_create(
+            student=request.user,
+            session=session,
+        )
+
+        attendance.status = Attendance.Status.PRESENT
+        attendance.check_in_time = timezone.now()
+        attendance.save(
+            update_fields=["status", "check_in_time"]
+        )
+
+        return Response({
+            "sessionId": session.id,
+            "attendance": attendance.status,
+            "checkInTime": attendance.check_in_time,
+        })
+
+
+class ChecklistItemView(APIView):
+    """
+    Add a checklist item for the current student.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, session_id):
+        session = get_object_or_404(
+            ScheduleSession,
+            id=session_id
+        )
+
+        text = request.data.get("text", "").strip()
+
+        if not text:
+            return Response(
+                {"error": "Checklist text is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        item = ChecklistItem.objects.create(
+            session=session,
+            student=request.user,
+            text=text,
+        )
+
+        return Response(
+            ChecklistItemSerializer(item).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ChecklistItemDetailView(APIView):
+    """
+    Update or delete a checklist item belonging to the current student.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, item_id):
+        item = get_object_or_404(
+            ChecklistItem,
+            id=item_id,
+            student=request.user,
+        )
+
+        serializer = ChecklistItemSerializer(
+            item,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data)
+
+    def delete(self, request, item_id):
+        item = get_object_or_404(
+            ChecklistItem,
+            id=item_id,
+            student=request.user,
+        )
+
+        item.delete()
+
+        return Response(
+            status=status.HTTP_204_NO_CONTENT
+        )
+class ScheduleStatsView(APIView):
+    """
+    Returns attendance statistics for the currently authenticated student.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        student = request.user
+
+        attendances = Attendance.objects.filter(
+            student=student
+        ).select_related("session")
+
+        total_sessions = attendances.count()
+
+        attended_sessions = attendances.filter(
+            status__in=[
+                Attendance.Status.PRESENT,
+                Attendance.Status.LATE,
+            ]
+        ).count()
+
+        if total_sessions > 0:
+            overall_attendance = round(
+                (attended_sessions / total_sessions) * 100
+            )
+        else:
+            overall_attendance = 0
+
+        # Calculate the current attendance streak.
+        attended_dates = set(
+            attendances.filter(
+                status__in=[
+                    Attendance.Status.PRESENT,
+                    Attendance.Status.LATE,
+                ]
+            ).values_list("session__date", flat=True)
+        )
+
+        today = timezone.localdate()
+        attendance_streak = 0
+        current_date = today
+
+        while current_date in attended_dates:
+            attendance_streak += 1
+            current_date -= timezone.timedelta(days=1)
+
+        return Response({
+            "overallAttendance": overall_attendance,
+            "attendanceStreak": attendance_streak,
+            "attendedSessions": attended_sessions,
+            "totalSessions": total_sessions,
         })

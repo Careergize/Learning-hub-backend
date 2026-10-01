@@ -1,6 +1,11 @@
 from rest_framework import serializers
 
-from .models import Certificate, Enrollment
+from .models import (
+    Certificate,
+    Enrollment,
+    ScheduleSession,
+    ChecklistItem,
+)
 
 
 class CertificateSerializer(serializers.ModelSerializer):
@@ -66,3 +71,111 @@ class EnrollmentCreateSerializer(serializers.ModelSerializer):
         student = self.context["request"].user
         enrollment, _ = Enrollment.objects.get_or_create(student=student, course=validated_data["course"])
         return enrollment
+
+class ChecklistItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChecklistItem
+        fields = ["id", "text", "done"]
+
+
+class ScheduleSessionSerializer(serializers.ModelSerializer):
+    course = serializers.CharField(source="course.title", read_only=True)
+    instructor = serializers.CharField(source="instructor.name", read_only=True)
+    dayOfWeek = serializers.SerializerMethodField()
+    month = serializers.SerializerMethodField()
+    fullDate = serializers.SerializerMethodField()
+    time = serializers.SerializerMethodField()
+    isToday = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+    attendance = serializers.SerializerMethodField()
+    checkInTime = serializers.SerializerMethodField()
+    items = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ScheduleSession
+        fields = [
+            "id",
+            "course",
+            "topic",
+            "date",
+            "start_time",
+            "end_time",
+            "dayOfWeek",
+            "month",
+            "fullDate",
+            "time",
+            "instructor",
+            "platform",
+            "meet_url",
+            "isToday",
+            "status",
+            "attendance",
+            "checkInTime",
+            "items",
+        ]
+
+    def get_dayOfWeek(self, obj):
+        return obj.date.strftime("%a")
+
+    def get_month(self, obj):
+        return obj.date.strftime("%b")
+
+    def get_fullDate(self, obj):
+        return obj.date.strftime("%B %d, %Y")
+
+    def get_time(self, obj):
+        return f"{obj.start_time.strftime('%I:%M %p')}–{obj.end_time.strftime('%I:%M %p')}"
+
+    def get_isToday(self, obj):
+        from django.utils import timezone
+        return obj.date == timezone.localdate()
+
+    def get_status(self, obj):
+        from django.utils import timezone
+
+        today = timezone.localdate()
+
+        if obj.date < today:
+            return "completed"
+        elif obj.date == today:
+            return "live"
+        return "upcoming"
+
+    def get_attendance(self, obj):
+        request = self.context.get("request")
+
+        if not request or not request.user.is_authenticated:
+            return "unmarked"
+
+        attendance = obj.attendance_records.filter(
+            student=request.user
+        ).first()
+
+        return attendance.status if attendance else "unmarked"
+
+    def get_checkInTime(self, obj):
+        request = self.context.get("request")
+
+        if not request or not request.user.is_authenticated:
+            return None
+
+        attendance = obj.attendance_records.filter(
+            student=request.user
+        ).first()
+
+        if not attendance or not attendance.check_in_time:
+            return None
+
+        return attendance.check_in_time.strftime("%I:%M %p")
+
+    def get_items(self, obj):
+        request = self.context.get("request")
+
+        if not request or not request.user.is_authenticated:
+            return []
+
+        items = obj.checklist_items.filter(
+            student=request.user
+        )
+
+        return ChecklistItemSerializer(items, many=True).data    

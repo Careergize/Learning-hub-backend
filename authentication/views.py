@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
+from rest_framework.authtoken.models import Token
 
 from .models import StudentProfile
 
@@ -58,13 +59,16 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
+        token, created = Token.objects.get_or_create(user=user)
+
         return Response({
-            'message': 'Login successful',
-            'user': {
-                'id': user.id,
-                'username': user.username,
-                'email': user.email,
-            }
+    'message': 'Login successful',
+    'token': token.key,
+    'user': {
+        'id': user.id,
+        'username': user.username,
+        'email': user.email,
+           }
         })
 
 
@@ -229,6 +233,7 @@ class AdminLoginView(APIView):
 
 
 class StudentProfileView(APIView):
+    permission_classes = [AllowAny]
 
     def get(self, request, user_id):
 
