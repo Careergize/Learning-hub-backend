@@ -13,6 +13,9 @@ from .views import (
     ChecklistItemView,
     ChecklistItemDetailView,
     ScheduleStatsView,
+    StudentDashboardView,
+    AchievementListView,
+    CertificateListView,
 )
 
 router = DefaultRouter()
@@ -30,6 +33,12 @@ router.register(
 )
 
 urlpatterns = [
+    path(
+    "certificates/",
+    CertificateListView.as_view(),
+    name="certificate-list",
+),
+    path("achievements/", AchievementListView.as_view(), name="achievement-list"),
     path(
         "lessons/<int:lesson_id>/complete/",
         LessonCompleteView.as_view(),
@@ -77,6 +86,12 @@ urlpatterns = [
         ScheduleStatsView.as_view(),
         name="schedule-stats",
     ),
+    path(
+    "dashboard/",
+    StudentDashboardView.as_view(),
+    name="student-dashboard",
+),
+    
 
     # Keep router URLs LAST
     path(

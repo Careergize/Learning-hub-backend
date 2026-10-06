@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import status, permissions
 from rest_framework.permissions import AllowAny
 from rest_framework.authtoken.models import Token
 
@@ -387,6 +387,62 @@ class StudentProfileView(APIView):
             today.month,
             today.day
         ) < (
+            date_of_birth.month,
+            date_of_birth.day
+        ):
+            age -= 1
+
+        return age
+
+class MyProfileView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        try:
+            student_profile = user.student_profile
+        except StudentProfile.DoesNotExist:
+            return Response(
+                {'error': 'Student profile not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        return Response({
+            'id': user.id,
+            'name': user.username,
+            'email': user.email,
+
+            'phone': student_profile.phone,
+            'date_of_birth': student_profile.date_of_birth,
+            'age': self.calculate_age(student_profile.date_of_birth),
+            'address': student_profile.address,
+            'city': student_profile.city,
+
+            'course': student_profile.course,
+            'career_goal': student_profile.career_goal,
+            'experience_level': student_profile.experience_level,
+            'skills': student_profile.skills,
+            'github': student_profile.github,
+            'linkedin': student_profile.linkedin,
+
+            'bio': student_profile.bio,
+            'status': student_profile.status,
+            'created_at': student_profile.created_at,
+        })
+
+    @staticmethod
+    def calculate_age(date_of_birth):
+        if not date_of_birth:
+            return None
+
+        from datetime import date
+
+        today = date.today()
+
+        age = today.year - date_of_birth.year
+
+        if (today.month, today.day) < (
             date_of_birth.month,
             date_of_birth.day
         ):

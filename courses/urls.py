@@ -5,6 +5,6 @@ from .views import CategoryViewSet, CourseViewSet
 
 router = DefaultRouter()
 router.register("categories", CategoryViewSet, basename="category")
-router.register("", CourseViewSet, basename="course")
+router.register("courses", CourseViewSet, basename="course")
 
 urlpatterns = [path("", include(router.urls))]

@@ -191,3 +191,59 @@ class ChecklistItem(models.Model):
 
     def __str__(self):
         return self.text
+
+class Achievement(models.Model):
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="achievements"
+    )
+
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    icon = models.CharField(max_length=50, blank=True)
+
+    category = models.CharField(
+        max_length=30,
+        blank=True
+    )
+
+    tier = models.CharField(
+        max_length=20,
+        blank=True
+    )
+
+    xp = models.PositiveIntegerField(default=0)
+
+    unlocked = models.BooleanField(default=True)
+
+    unlocked_date = models.DateField(
+        null=True,
+        blank=True
+    )
+
+    progress = models.PositiveIntegerField(
+        default=0
+    )
+
+    progress_label = models.CharField(
+        max_length=100,
+        blank=True
+    )
+
+    requirement = models.TextField(
+        blank=True
+    )
+
+    icon_type = models.CharField(
+        max_length=50,
+        blank=True
+    )
+
+    earned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-earned_at"]
+
+    def __str__(self):
+        return f"{self.student.username} - {self.title}"

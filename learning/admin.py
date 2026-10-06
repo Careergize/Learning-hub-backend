@@ -10,6 +10,7 @@ from .models import (
     ScheduleSession,
     Attendance,
     ChecklistItem,
+    Achievement,
 )
 
 
@@ -57,3 +58,8 @@ class ChecklistItemAdmin(admin.ModelAdmin):
     list_display = ("student", "session", "text", "done")
     list_filter = ("done",)
     search_fields = ("student__username", "text", "session__topic")
+
+@admin.register(Achievement)
+class AchievementAdmin(admin.ModelAdmin):
+    list_display = ("student", "title", "earned_at")
+    search_fields = ("student__username", "title")

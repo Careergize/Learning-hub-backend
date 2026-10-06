@@ -5,6 +5,7 @@ from .models import (
     Enrollment,
     ScheduleSession,
     ChecklistItem,
+    Achievement,
 )
 
 
@@ -179,3 +180,23 @@ class ScheduleSessionSerializer(serializers.ModelSerializer):
         )
 
         return ChecklistItemSerializer(items, many=True).data    
+
+class AchievementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Achievement
+        fields = [
+            "id",
+            "title",
+            "description",
+            "icon",
+            "category",
+            "tier",
+            "xp",
+            "unlocked",
+            "unlocked_date",
+            "progress",
+            "progress_label",
+            "requirement",
+            "icon_type",
+            "earned_at",
+        ]

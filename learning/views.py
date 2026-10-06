@@ -18,6 +18,7 @@ from .models import (
     ScheduleSession,
     Attendance,
     ChecklistItem,
+    Achievement,
 )
 from .serializers import (
     CertificateSerializer,
@@ -25,6 +26,7 @@ from .serializers import (
     EnrollmentCreateSerializer,
     ScheduleSessionSerializer,
     ChecklistItemSerializer,
+    AchievementSerializer,
 )
 
 
@@ -143,6 +145,24 @@ class CertificateDetailView(APIView):
         })
         return Response(data)
 
+class CertificateListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        certificates = Certificate.objects.filter(
+            enrollment__student=request.user
+        ).select_related(
+            "enrollment",
+            "enrollment__course",
+        )
+
+        serializer = CertificateSerializer(
+            certificates,
+            many=True
+        )
+
+        return Response(serializer.data)
+
 
 class CertificateShareView(APIView):
     """'Share Credential' button — bumps a share counter, returns the link to copy."""
@@ -201,14 +221,20 @@ class ScheduleViewSet(viewsets.ReadOnlyModelViewSet):
 class AttendanceCheckInView(APIView):
     """
     Marks the current student as present for a schedule session.
+    Only students enrolled in the session's course can check in.
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, session_id):
+        enrolled_course_ids = Enrollment.objects.filter(
+            student=request.user
+        ).values_list("course_id", flat=True)
+
         session = get_object_or_404(
             ScheduleSession,
-            id=session_id
+            id=session_id,
+            course_id__in=enrolled_course_ids,
         )
 
         attendance, created = Attendance.objects.get_or_create(
@@ -227,19 +253,24 @@ class AttendanceCheckInView(APIView):
             "attendance": attendance.status,
             "checkInTime": attendance.check_in_time,
         })
-
-
+    
 class ChecklistItemView(APIView):
     """
     Add a checklist item for the current student.
+    Only students enrolled in the session's course can add checklist items.
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, session_id):
+        enrolled_course_ids = Enrollment.objects.filter(
+            student=request.user
+        ).values_list("course_id", flat=True)
+
         session = get_object_or_404(
             ScheduleSession,
-            id=session_id
+            id=session_id,
+            course_id__in=enrolled_course_ids,
         )
 
         text = request.data.get("text", "").strip()
@@ -351,4 +382,85 @@ class ScheduleStatsView(APIView):
             "attendanceStreak": attendance_streak,
             "attendedSessions": attended_sessions,
             "totalSessions": total_sessions,
+        })
+
+class StudentDashboardView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        student = request.user
+
+        enrollments = Enrollment.objects.filter(
+            student=student
+        ).select_related(
+            "course",
+            "course__category",
+            "course__instructor",
+        ).prefetch_related(
+            "course__skills",
+            "lesson_progress",
+        )
+
+        profile = getattr(student, "student_profile", None)
+
+        return Response({
+            "student": {
+                "id": student.id,
+                "name": student.username,
+                "email": student.email,
+                "phone": profile.phone if profile else "",
+                "course": profile.course if profile else "",
+                "career_goal": profile.career_goal if profile else "",
+                "experience_level": profile.experience_level if profile else "",
+            },
+
+            "learning": {
+                "totalEnrolled": enrollments.count(),
+                "completedCount": enrollments.filter(
+                    status=Enrollment.Status.COMPLETED
+                ).count(),
+                "inProgressCount": enrollments.filter(
+                    status=Enrollment.Status.IN_PROGRESS
+                ).count(),
+                "certificatesEarned": Certificate.objects.filter(
+                    enrollment__student=student
+                ).count(),
+            },
+
+            "courses": EnrolledCourseSerializer(
+                enrollments,
+                many=True
+            ).data,
+        })
+class AchievementListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        achievements = Achievement.objects.filter(
+            student=request.user
+        )
+
+        serializer = AchievementSerializer(
+            achievements,
+            many=True
+        )
+
+        total_xp = sum(
+            achievement.xp
+            for achievement in achievements
+        )
+
+        unlocked_count = achievements.filter(
+            unlocked=True
+        ).count()
+
+        total_count = achievements.count()
+
+        return Response({
+            "achievements": serializer.data,
+            "summary": {
+                "total_xp": total_xp,
+                "unlocked_count": unlocked_count,
+                "total_count": total_count,
+            }
         })
