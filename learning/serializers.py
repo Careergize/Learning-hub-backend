@@ -9,10 +9,30 @@ from .models import (
 )
 
 
+
 class CertificateSerializer(serializers.ModelSerializer):
+    courseTitle = serializers.CharField(
+        source="enrollment.course.title",
+        read_only=True
+    )
+
+    instructor = serializers.CharField(
+        source="enrollment.course.instructor.name",
+        read_only=True
+    )
+
     class Meta:
         model = Certificate
-        fields = ["certificate_id", "issued_date", "verification_url", "share_count"]
+        fields = [
+            "certificate_id",
+            "issued_date",
+            "verification_url",
+            "share_count",
+            "courseTitle",
+            "instructor",
+        ]
+
+
 
 
 class EnrolledCourseSerializer(serializers.ModelSerializer):

@@ -4,6 +4,9 @@ from django.shortcuts import render
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -145,23 +148,90 @@ class CertificateDetailView(APIView):
         })
         return Response(data)
 
+
 class CertificateListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        certificates = Certificate.objects.filter(
-            enrollment__student=request.user
+        enrollments = Enrollment.objects.filter(
+            student=request.user
         ).select_related(
-            "enrollment",
-            "enrollment__course",
+            "course",
+            "course__category",
+            "course__instructor",
+        ).prefetch_related(
+            "course__skills",
+            "lesson_progress",
         )
 
-        serializer = CertificateSerializer(
-            certificates,
-            many=True
-        )
+        certificates = []
 
-        return Response(serializer.data)
+        for enrollment in enrollments:
+            course = enrollment.course
+
+            completed_lessons = enrollment.completed_lessons
+            total_lessons = enrollment.total_lessons
+            progress = enrollment.progress_percent
+
+            remaining_lessons = max(
+                total_lessons - completed_lessons,
+                0
+            )
+
+            if enrollment.status == Enrollment.Status.COMPLETED:
+                certificate = getattr(
+                    enrollment,
+                    "certificate",
+                    None
+                )
+
+                if certificate:
+                    certificates.append({
+                        "id": certificate.certificate_id,
+                        "title": course.title,
+                        "track": course.category.name,
+                        "credentialId": certificate.certificate_id,
+                        "issueDate": certificate.issued_date,
+                        "expiryDate": "",
+                        "grade": "Completed",
+                        "instructor": course.instructor.name,
+                        "skills": list(
+                            course.skills.values_list(
+                                "name",
+                                flat=True
+                            )
+                        ),
+                        "status": "verified",
+                        "progress": 100,
+                        "remainingModules": "Course completed",
+                        "verificationHash": certificate.certificate_id,
+                    })
+
+            else:
+                certificates.append({
+                    "id": f"progress-{enrollment.id}",
+                    "title": course.title,
+                    "track": course.category.name,
+                    "credentialId": "",
+                    "issueDate": "",
+                    "expiryDate": "",
+                    "grade": "In Progress",
+                    "instructor": course.instructor.name,
+                    "skills": list(
+                        course.skills.values_list(
+                            "name",
+                            flat=True
+                        )
+                    ),
+                    "status": "in_progress",
+                    "progress": progress,
+                    "remainingModules": (
+                        f"{remaining_lessons} modules remaining"
+                    ),
+                    "verificationHash": "",
+                })
+
+        return Response(certificates)
 
 
 class CertificateShareView(APIView):
@@ -456,11 +526,97 @@ class AchievementListView(APIView):
 
         total_count = achievements.count()
 
-        return Response({
+        all_students = User.objects.filter(
+            achievements__isnull=False
+        ).distinct()
+
+        student_xp = []
+
+        for student in all_students:
+            xp = sum(
+                achievement.xp
+                for achievement in student.achievements.all()
+            )
+
+            student_xp.append({
+                "student": student,
+                "xp": xp,
+            })
+
+        student_xp.sort(
+            key=lambda item: item["xp"],
+            reverse=True
+        )
+
+        rank = next(
+            (
+                index + 1
+                for index, item in enumerate(student_xp)
+                if item["student"].id == request.user.id
+            ),
+            None
+        )
+
+        total_students = len(student_xp)
+
+        top_percentage = (
+            round((rank / total_students) * 100)
+            if rank and total_students
+            else None
+        )
+
+        leaderboard = []
+
+        for index, item in enumerate(student_xp):
+            student = item["student"]
+
+            attendances = Attendance.objects.filter(
+                student=student
+            ).select_related("session")
+
+            attended_dates = set(
+                attendances.filter(
+                    status__in=[
+                        Attendance.Status.PRESENT,
+                        Attendance.Status.LATE,
+                    ]
+                ).values_list("session__date", flat=True)
+            )
+
+            today = timezone.localdate()
+            attendance_streak = 0
+            current_date = today
+
+            while current_date in attended_dates:
+                attendance_streak += 1
+                current_date -= timezone.timedelta(days=1)
+
+            leaderboard.append({
+                "rank": index + 1,
+                "name": student.username,
+                "email": student.email,
+                "xp": item["xp"],
+                "badgesCount": student.achievements.filter(
+                    unlocked=True
+                ).count(),
+                "tier": (
+                    "Grandmaster" if item["xp"] >= 4000
+                    else "Master" if item["xp"] >= 3000
+                    else "Senior Learner" if item["xp"] >= 1000
+                    else "Learner"
+                ),
+                "streak": attendance_streak,
+            })
+
+            return Response({
             "achievements": serializer.data,
             "summary": {
                 "total_xp": total_xp,
                 "unlocked_count": unlocked_count,
                 "total_count": total_count,
-            }
+                "rank": rank,
+                "total_students": total_students,
+                "top_percentage": top_percentage,
+            },
+            "leaderboard": leaderboard,
         })
