@@ -6,6 +6,7 @@ from .views import (
     CertificateDetailView,
     CertificateShareView,
     CertificateVerifyView,
+    CertificatePDFView,
     LessonCompleteView,
     MyLearningViewSet,
     ScheduleViewSet,
@@ -16,6 +17,8 @@ from .views import (
     StudentDashboardView,
     AchievementListView,
     CertificateListView,
+    TranscriptView,
+    
 )
 
 router = DefaultRouter()
@@ -38,6 +41,11 @@ urlpatterns = [
     CertificateListView.as_view(),
     name="certificate-list",
 ),
+ path(
+    "transcript/",
+    TranscriptView.as_view(),
+    name="student-transcript",
+),
     path("achievements/", AchievementListView.as_view(), name="achievement-list"),
     path(
         "lessons/<int:lesson_id>/complete/",
@@ -56,6 +64,17 @@ urlpatterns = [
         CertificateShareView.as_view(),
         name="certificate-share",
     ),
+
+    path(
+    "certificates/<str:certificate_id>/download/",
+    CertificatePDFView.as_view(),
+    name="certificate-pdf",
+),
+ path(
+    "certificates/<str:certificate_id>/verify/",
+    CertificateVerifyView.as_view(),
+    name="certificate-verify",
+),
 
     path(
         "certificates/<str:certificate_id>/",

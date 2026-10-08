@@ -248,7 +248,8 @@ class StudentProfileView(APIView):
             user=user,
             defaults={'status': 'approved'}
         )
-
+       
+        
         return Response({
             'id': user.id,
             'name': user.username,
@@ -278,12 +279,15 @@ class StudentProfileView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Automatically get or create the profile
+               # Automatically get or create the profile
         student_profile, _ = StudentProfile.objects.get_or_create(
             user=user,
             defaults={'status': 'approved'}
         )
 
+        if 'name' in request.data:
+            user.username = request.data.get('name', '')
+            user.save()
 
         # Personal Information
 
@@ -370,14 +374,19 @@ class StudentProfileView(APIView):
             'created_at': student_profile.created_at,
         })
 
-
+ 
     @staticmethod
     def calculate_age(date_of_birth):
-
         if not date_of_birth:
             return None
 
-        from datetime import date
+        from datetime import date, datetime
+
+        if isinstance(date_of_birth, str):
+            date_of_birth = datetime.strptime(
+                date_of_birth,
+                "%Y-%m-%d"
+            ).date()
 
         today = date.today()
 
@@ -393,7 +402,6 @@ class StudentProfileView(APIView):
             age -= 1
 
         return age
-
 class MyProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
