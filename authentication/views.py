@@ -6,6 +6,8 @@ from rest_framework.response import Response
 from rest_framework import status, permissions
 from rest_framework.permissions import AllowAny
 from rest_framework.authtoken.models import Token
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAdminUser
 
 from .models import StudentProfile
 
@@ -60,17 +62,18 @@ class LoginView(APIView):
             )
 
         token, created = Token.objects.get_or_create(user=user)
-
         return Response({
-    'message': 'Login successful',
-    'token': token.key,
-    'user': {
-        'id': user.id,
-        'username': user.username,
-        'email': user.email,
-           }
+            'message': 'Login successful',
+            'token': token.key,
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'is_staff': user.is_staff,
+            }
         })
 
+       
 
 
 class RegisterView(APIView):
@@ -131,6 +134,9 @@ class RegisterView(APIView):
 
 
 class StudentApprovalView(APIView):
+    
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAdminUser]
 
     def get(self, request):
         students = StudentProfile.objects.all().order_by('-created_at')
@@ -220,8 +226,12 @@ class AdminLoginView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        
+        token, created = Token.objects.get_or_create(user=user)
+
         return Response({
             'message': 'Admin login successful',
+            'token': token.key,
             'user': {
                 'id': user.id,
                 'username': user.username,

@@ -507,6 +507,7 @@ class StudentDashboardView(APIView):
                 many=True
             ).data,
         })
+
 class AchievementListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -613,7 +614,7 @@ class AchievementListView(APIView):
                 "streak": attendance_streak,
             })
 
-            return Response({
+        return Response({
             "achievements": serializer.data,
             "summary": {
                 "total_xp": total_xp,
@@ -624,9 +625,7 @@ class AchievementListView(APIView):
                 "top_percentage": top_percentage,
             },
             "leaderboard": leaderboard,
-
         })
-
 class CertificatePDFView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
