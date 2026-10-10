@@ -57,11 +57,13 @@ class EnrolledCourseSerializer(serializers.ModelSerializer):
     completedDate = serializers.DateTimeField(source="completed_at", format="%B %d, %Y", read_only=True)
     certificateId = serializers.SerializerMethodField()
     lastAccessed = serializers.DateTimeField(source="last_accessed", read_only=True)
+    courseId = serializers.IntegerField(source="course.id", read_only=True)
+
 
     class Meta:
         model = Enrollment
         fields = [
-            "id", "title", "category", "level", "icon", "bannerGradient",
+            "id", "courseId", "title", "category", "level", "icon", "bannerGradient",
             "accentColor", "progress", "completedLessons", "totalLessons",
             "status", "instructor", "duration", "nextLessonTitle",
             "completedDate", "certificateId", "lastAccessed", "skills",
