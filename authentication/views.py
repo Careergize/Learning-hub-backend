@@ -1,5 +1,8 @@
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from datetime import date
+from django.db.models import Count, Q
+from django.utils import timezone
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -10,6 +13,8 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAdminUser
 
 from .models import StudentProfile
+from courses.models import Course
+from learning.models import Achievement, Enrollment, ScheduleSession
 
 
 class LoginView(APIView):
@@ -31,7 +36,25 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        # Check student approval status
+        # Check password
+        user = authenticate(
+            username=user.username,
+            password=password
+        )
+
+        if user is None:
+            return Response(
+                {'error': 'Invalid email or password.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        if user.is_staff or user.is_superuser:
+            return Response(
+                {'error': 'Admin accounts must use the Admin Login page.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Check student approval status after authenticating the credentials.
         try:
             student_profile = user.student_profile
         except StudentProfile.DoesNotExist:
@@ -47,18 +70,6 @@ class LoginView(APIView):
             return Response(
                 {'error': 'Your registration request was rejected.'},
                 status=status.HTTP_403_FORBIDDEN
-            )
-
-        # Check password
-        user = authenticate(
-            username=user.username,
-            password=password
-        )
-
-        if user is None:
-            return Response(
-                {'error': 'Invalid email or password.'},
-                status=status.HTTP_401_UNAUTHORIZED
             )
 
         token, created = Token.objects.get_or_create(user=user)
@@ -139,17 +150,73 @@ class StudentApprovalView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
-        students = StudentProfile.objects.all().order_by('-created_at')
+        students = StudentProfile.objects.filter(
+            user__is_staff=False,
+            user__is_superuser=False,
+        ).select_related('user').prefetch_related(
+            'user__enrollments__course__lessons',
+            'user__enrollments__lesson_progress',
+        ).order_by('-created_at')
+
+        status_filter = request.query_params.get('status')
+        if status_filter in {'pending', 'approved', 'rejected'}:
+            students = students.filter(status=status_filter)
+
+        search = request.query_params.get('search', '').strip()
+        if search:
+            students = students.filter(
+                Q(user__username__icontains=search)
+                | Q(user__email__icontains=search)
+                | Q(course__icontains=search)
+            )
 
         student_list = []
 
         for student in students:
+            enrollments = list(student.user.enrollments.all())
+            course_data = []
+            progress_values = []
+            for enrollment in enrollments:
+                total_lessons = len(enrollment.course.lessons.all())
+                completed_lessons = sum(
+                    1 for progress in enrollment.lesson_progress.all()
+                    if progress.is_completed
+                )
+                progress_percent = (
+                    round(completed_lessons / total_lessons * 100)
+                    if total_lessons else 0
+                )
+                progress_values.append(progress_percent)
+                course_data.append({
+                    'id': enrollment.course_id,
+                    'title': enrollment.course.title,
+                    'status': enrollment.status,
+                    'progress': progress_percent,
+                    'completed_lessons': completed_lessons,
+                    'total_lessons': total_lessons,
+                })
+
             student_list.append({
                 'id': student.id,
+                'user_id': student.user_id,
                 'name': student.user.username,
                 'email': student.user.email,
                 'status': student.status,
                 'created_at': student.created_at,
+                'phone': student.phone,
+                'age': student.age,
+                'course': student.course,
+                'career_goal': student.career_goal,
+                'experience_level': student.experience_level,
+                'enrollment_count': len(enrollments),
+                'completed_courses': sum(
+                    enrollment.status == 'completed' for enrollment in enrollments
+                ),
+                'average_progress': (
+                    round(sum(progress_values) / len(progress_values))
+                    if progress_values else 0
+                ),
+                'courses': course_data,
             })
 
         return Response(student_list)
@@ -166,7 +233,11 @@ class StudentApprovalView(APIView):
             )
 
         try:
-            student = StudentProfile.objects.get(id=student_id)
+            student = StudentProfile.objects.get(
+                id=student_id,
+                user__is_staff=False,
+                user__is_superuser=False,
+            )
         except StudentProfile.DoesNotExist:
             return Response(
                 {'error': 'Student not found.'},
@@ -195,6 +266,146 @@ class StudentApprovalView(APIView):
             {'error': 'Invalid action. Use approve or reject.'},
             status=status.HTTP_400_BAD_REQUEST
         )
+
+
+class AdminDashboardView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        students = StudentProfile.objects.filter(
+            user__is_staff=False,
+            user__is_superuser=False,
+        )
+        enrollments = Enrollment.objects.filter(
+            student__is_staff=False,
+            student__is_superuser=False,
+        )
+
+        enrollment_progress = enrollments.annotate(
+            lesson_count=Count('course__lessons', distinct=True),
+            completed_lesson_count=Count(
+                'lesson_progress',
+                filter=Q(lesson_progress__is_completed=True),
+                distinct=True,
+            ),
+        ).values_list('lesson_count', 'completed_lesson_count')
+        progress_values = [
+            round(completed / total * 100) if total else 0
+            for total, completed in enrollment_progress
+        ]
+
+        now = timezone.localtime()
+        months = []
+        month_keys = []
+        for offset in range(5, -1, -1):
+            month_index = now.month - 1 - offset
+            year = now.year + month_index // 12
+            month = month_index % 12 + 1
+            month_keys.append((year, month))
+        registration_counts = students.filter(
+            created_at__year__in={year for year, _ in month_keys}
+        ).values('created_at__year', 'created_at__month').annotate(total=Count('id'))
+        registration_lookup = {
+            (item['created_at__year'], item['created_at__month']): item['total']
+            for item in registration_counts
+        }
+        for year, month in month_keys:
+            months.append({
+                'month': date(year, month, 1).strftime('%b'),
+                'year': year,
+                'count': registration_lookup.get((year, month), 0),
+            })
+
+        progress_buckets = [
+            {'label': '0–24%', 'count': 0},
+            {'label': '25–49%', 'count': 0},
+            {'label': '50–74%', 'count': 0},
+            {'label': '75–99%', 'count': 0},
+            {'label': '100%', 'count': 0},
+        ]
+        for value in progress_values:
+            bucket = min(value // 25, 4)
+            progress_buckets[bucket]['count'] += 1
+
+        course_enrollments = Course.objects.annotate(
+            enrollment_count=Count(
+                'enrollments',
+                filter=Q(
+                    enrollments__student__is_staff=False,
+                    enrollments__student__is_superuser=False,
+                ),
+                distinct=True,
+            )
+        ).order_by('-enrollment_count', 'title').values(
+            'title', 'enrollment_count'
+        )[:6]
+
+        recent_registrations = students.select_related('user').order_by('-created_at')[:6]
+        recent_enrollments = enrollments.select_related(
+            'student', 'course'
+        ).order_by('-enrolled_at')[:6]
+        today = timezone.localdate()
+        upcoming_classes = ScheduleSession.objects.filter(
+            Q(date__gt=today)
+            | Q(date=today, start_time__gte=timezone.localtime().time())
+        ).select_related('course', 'instructor').order_by('date', 'start_time')[:6]
+        student_achievements = Achievement.objects.filter(
+            student__is_staff=False,
+            student__is_superuser=False,
+            student__student_profile__isnull=False,
+        )
+
+        return Response({
+            'admin': {
+                'id': request.user.id,
+                'username': request.user.username,
+                'email': request.user.email,
+            },
+            'stats': {
+                'total_students': students.count(),
+                'pending_students': students.filter(status='pending').count(),
+                'approved_students': students.filter(status='approved').count(),
+                'rejected_students': students.filter(status='rejected').count(),
+                'total_courses': Course.objects.count(),
+                'published_courses': Course.objects.filter(is_published=True).count(),
+                'enrollments': enrollments.count(),
+                'completed_enrollments': enrollments.filter(status='completed').count(),
+                'in_progress_enrollments': enrollments.filter(status='in_progress').count(),
+                'average_progress': (
+                    round(sum(progress_values) / len(progress_values))
+                    if progress_values else 0
+                ),
+                'achievements': student_achievements.count(),
+                'unlocked_achievements': student_achievements.filter(unlocked=True).count(),
+            },
+            'registrations_by_month': months,
+            'progress_distribution': progress_buckets,
+            'enrollments_by_course': list(course_enrollments),
+            'recent_registrations': [{
+                'id': profile.id,
+                'name': profile.user.get_full_name() or profile.user.username,
+                'email': profile.user.email,
+                'status': profile.status,
+                'created_at': profile.created_at,
+            } for profile in recent_registrations],
+            'recent_enrollments': [{
+                'id': enrollment.id,
+                'student': enrollment.student.get_full_name() or enrollment.student.username,
+                'course': enrollment.course.title,
+                'status': enrollment.status,
+                'enrolled_at': enrollment.enrolled_at,
+            } for enrollment in recent_enrollments],
+            'upcoming_classes': [{
+                'id': session.id,
+                'course': session.course.title,
+                'topic': session.topic,
+                'date': session.date,
+                'start_time': session.start_time,
+                'end_time': session.end_time,
+                'instructor': session.instructor.name,
+            } for session in upcoming_classes],
+        })
 class AdminLoginView(APIView):
 
     permission_classes = [AllowAny]
@@ -242,9 +453,15 @@ class AdminLoginView(APIView):
 
 
 class StudentProfileView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, user_id):
+        if request.user.id != user_id:
+            return Response(
+                {'error': 'You can only access your own profile.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
@@ -281,6 +498,12 @@ class StudentProfileView(APIView):
         })
 
     def put(self, request, user_id):
+        if request.user.id != user_id:
+            return Response(
+                {'error': 'You can only update your own profile.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:

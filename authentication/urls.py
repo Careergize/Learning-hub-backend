@@ -4,6 +4,7 @@ from .views import (
     RegisterView,
     StudentApprovalView,
     AdminLoginView,
+    AdminDashboardView,
     StudentProfileView,
     MyProfileView
 )
@@ -13,6 +14,7 @@ urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
     path('students/', StudentApprovalView.as_view(), name='students'),
     path('admin-login/', AdminLoginView.as_view(), name='admin-login'),
+    path('admin/dashboard/', AdminDashboardView.as_view(), name='admin-dashboard'),
     path('profile/<int:user_id>/', StudentProfileView.as_view(), name='student-profile'),
     path('my-profile/', MyProfileView.as_view(), name='my-profile'),
 ]

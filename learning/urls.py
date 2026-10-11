@@ -20,6 +20,7 @@ from .views import (
     TranscriptView,
     
 )
+from .admin_views import AdminAchievementListView, AdminScheduleViewSet
 
 router = DefaultRouter()
 
@@ -34,6 +35,8 @@ router.register(
     ScheduleViewSet,
     basename="schedule",
 )
+router.register("admin/schedule", AdminScheduleViewSet, basename="admin-schedule")
+router.register("admin/achievements", AdminAchievementListView, basename="admin-achievements")
 
 urlpatterns = [
     path(
